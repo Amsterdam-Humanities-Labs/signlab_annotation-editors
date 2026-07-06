@@ -1,0 +1,9 @@
+# Large binary avatar model — kept on disk (folder is runnable) but not versioned.
+# Remove this line (or use git-lfs) to track it. See README "The 34 MB avatar model & git".
+3DAnn2/zin/PalmerPolo1024uastc.glb
+
+# Runtime data — keep the dirs, ignore their contents
+*/zin/eaf/zin/*
+*/zin/cache/*
+3DAnn2/zin/record3D/out/*
+!**/.gitkeep
