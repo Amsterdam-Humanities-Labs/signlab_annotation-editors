@@ -1,9 +1,24 @@
-# Large binary avatar model — kept on disk (folder is runnable) but not versioned.
-# Remove this line (or use git-lfs) to track it. See README "The 34 MB avatar model & git".
-3DAnn2/zin/PalmerPolo1024uastc.glb
+# --- credentials: never commit ---
+.env
+.env.*
+!.env.example
+mysql_config.php
+mysql_config_test.php
+mysql_config.example.php.keep
+config.php
+config.php.backup*
+*.pem
+*.key
 
-# Runtime data — keep the dirs, ignore their contents
-*/zin/eaf/zin/*
-*/zin/cache/*
-3DAnn2/zin/record3D/out/*
-!**/.gitkeep
+# --- dependencies ---
+node_modules/
+vendor/
+
+# --- logs, caches, os cruft ---
+*.log
+logs/
+.DS_Store
+Thumbs.db
+
+# --- large assets excluded from git (GitHub rejects >100MB) ---
+/3DAnn2/zin/PalmerPolo1024uastc.glb
