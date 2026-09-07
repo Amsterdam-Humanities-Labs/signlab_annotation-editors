@@ -30,7 +30,7 @@ deployments on the same origin:
 |---|---|
 | `/animMIDI/babyloncc/dist/environment.envbin` | `signlab_sC-Animation-PP` at `/web/animMIDI` |
 | `/animMIDI/babyloncc/dist/PalmerPolo1024uastc.glb` | same — 34 MB base avatar |
-| `/glosses_transformed.json` | rebuilt by the Signbank connector script |
+| `/signbank_data/glosses_transformed.json` | rebuilt by the Signbank connector in menu_beta; `/glosses_transformed.json` is the pre-connector path and is still read as a fallback |
 | `/userProtect.js` | the deploy's shared auth guard (subBeta8 only) |
 | `mysql_config.php` | one level above `zin/`; symlink to `/web/mysql_config.php` |
 
