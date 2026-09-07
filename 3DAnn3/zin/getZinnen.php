@@ -3,6 +3,7 @@ header('Content-Type: application/json');
 
 // Include the MySQL configuration file
 include '../mysql_config.php';
+require_once __DIR__ . '/mocapFiles.php';
 
 //disable php warnings
 error_reporting(E_ERROR | E_PARSE);
@@ -130,6 +131,9 @@ switch ($action) {
         break;
     case 'listVideosWithoutMocap':
         listVideosWithoutMocap($conn);
+        break;
+    case 'listMocapFiles':
+        listMocapFiles($conn);
         break;
     case 'saveSubtitlesAndEAFFiles':
         saveSubtitlesAndEAFFiles($conn);
@@ -4003,6 +4007,44 @@ function sendSSE($data) {
 }
 
 /**
+ * List zin videos with their latest mocap take, baked GLB and gloss SRT,
+ * filtered by the MCP status columns. See mocapFiles.php for the join.
+ */
+function listMocapFiles($conn) {
+    header('Content-Type: application/json; charset=utf-8');
+
+    $force = ($_GET['refreshIndex'] ?? '') === '1';
+    $index = mocap_get_index(MOCAP_CACHE, MOCAP_FBX_DIR, MOCAP_GLB_DIR, MOCAP_CACHE_TTL, $force);
+
+    // A failed directory scan (rclone mount hiccup, permissions, etc.) must
+    // never be reported as "success: true, total: 0" — that is
+    // indistinguishable in the UI from a genuinely unbaked corpus. See
+    // mocap_build_index()'s 'ok' flag in mocapFiles.php.
+    if (empty($index['ok'])) {
+        echo json_encode([
+            'success' => false,
+            'error'   => 'Kon de mocap-bestandenindex niet opbouwen (map-scan mislukte); probeer het later opnieuw.',
+        ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+        exit();
+    }
+
+    $result = mocap_file_list($conn, $index, [
+        'mcpStatusTijdAnnotatie'    => $_GET['mcpStatusTijdAnnotatie'] ?? null,
+        'mcpStatusTijdAnnotatieGvg' => $_GET['mcpStatusTijdAnnotatieGvg'] ?? null,
+        'mcpStatusPostprocessing'   => $_GET['mcpStatusPostprocessing'] ?? null,
+        'baked'                     => $_GET['baked'] ?? null,
+        'hasGloss'                  => $_GET['hasGloss'] ?? null,
+        'search'                    => $_GET['search'] ?? null,
+        'page'                      => $_GET['page'] ?? 1,
+        'limit'                     => $_GET['limit'] ?? 100,
+    ]);
+
+    $result['success'] = !isset($result['error']);
+    echo json_encode($result, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+    exit();
+}
+
+/**
  * Get the latest motion capture FBX file for a given video
  */
 function getLatestMocapFile($conn) {
@@ -4051,11 +4093,28 @@ function getLatestMocapFile($conn) {
         // which lives in fbx/post_processed/ under the same filename.
         $glbFilename = preg_replace('/\.fbx$/i', '.glb', $latestFile);
         $glbUrl = '/gebarenoverleg_media/fbx/post_processed/' . $glbFilename;
+
+        // Preferred output: the FBXtoGLBCompression pipeline's GLB plus its facial
+        // shape-key sidecar (see viconSync/cc_pipeline/README.md). It only exists for
+        // captures whose CC export has been converted, so the caller falls back to
+        // $glbUrl and the older editor when ccGlbUrl is null.
+        $baseName = preg_replace('/\.fbx$/i', '', $latestFile);
+        $ccGlbFilename = $baseName . '_anim.glb';
+        $ccGlbPath = '/web/gebarenoverleg_media/fbx/cc_pipeline/' . $ccGlbFilename;
+        $ccShapekeysPath = '/web/gebarenoverleg_media/fbx/cc_pipeline/' . $baseName . '_shapekeys.json';
+
+        // Require both halves: a GLB without its sidecar would load with a frozen face.
+        $ccGlbUrl = null;
+        if (is_readable($ccGlbPath) && is_readable($ccShapekeysPath)) {
+            $ccGlbUrl = '/gebarenoverleg_media/fbx/cc_pipeline/' . $ccGlbFilename;
+        }
+
         echo json_encode([
             'success' => true,
             'hasMocap' => true,
             'fbxFilename' => $latestFile,
             'glbUrl' => $glbUrl,
+            'ccGlbUrl' => $ccGlbUrl,
             'takeNumber' => $maxTake
         ]);
     } else {

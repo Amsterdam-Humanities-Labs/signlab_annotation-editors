@@ -2,10 +2,11 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>3D Annotation Editor - Improved UI</title>
+  <title>3D Annotation Editor - FBXtoGLBCompression pipeline</title>
   <!-- Babylon.js dependencies - using latest CDN (versioned URLs not available) -->
   <script src="https://cdn.babylonjs.com/babylon.js"></script>
   <script src="https://cdn.babylonjs.com/loaders/babylonjs.loaders.min.js"></script>
+  <script src="js/syncTiers.js"></script>
   <style>
     /* CSS Custom Properties for easy customization */
     :root {
@@ -195,6 +196,14 @@
     .tier-label.tier-0 { background-color: var(--tier-0-color) !important; }
     .tier-label.tier-1 { background-color: var(--tier-1-color) !important; }
     .tier-label.tier-2 { background-color: var(--tier-2-color) !important; }
+    /* Sync-from-mp4 control group */
+    .sync-group { display: inline-flex; align-items: center; gap: 4px;
+                  padding: 2px 8px; margin-left: 8px;
+                  border-left: 1px solid #ccc; }
+    .sync-group-label { font-size: 12px; color: #555; margin-right: 2px; }
+    .sync-group .btn { font-size: 12px; }
+    .sync-tier-btn.staged { font-weight: 600; box-shadow: 0 0 0 2px rgba(0,0,0,.15) inset; }
+    .sync-status { font-size: 12px; color: #b8860b; font-weight: 600; margin-left: 4px; }
     /* Side canvas styles for start/end frame preview — shown as insets over the
        top corners of the 3D view so they are always visible regardless of window width */
     #canvasLeft, #canvasRight {
@@ -518,6 +527,13 @@
 
   <!-- Canvas Preview and Controls -->
   <div class="middle-bar container text-center my-3">
+    <div style="background:#2d4a22;border:1px solid #4a7a35;color:#cfe8c0;padding:6px 10px;margin-bottom:8px;border-radius:4px;font-size:0.85em;">
+      <strong>Pipeline test page (3DAnn3)</strong> &mdash; loads GLBs from the
+      FBXtoGLBCompression pipeline: skeleton is retargeted from the GLB, facial
+      animation comes from the <code>_shapekeys.json</code> sidecar. Position units
+      are auto-detected (override with <code>&amp;posScale=</code>). Open the browser
+      console for <code>[units]</code> and <code>[shapekeys]</code> diagnostics.
+    </div>
     <div id="zinDisplay" style="font-size: 1.2em; margin-bottom: 10px; font-weight: bold;">Load a GLB animation...</div>
     <div class="headRow">
       <div class="headCol">
@@ -617,6 +633,15 @@
       <button id="revertAutoSegBtn" class="btn btn-outline-dark" title="Restore the Signbank ID glossen timings from before Auto-Segment" disabled>Revert Autoseg</button>
       <button id="view2DBtn" class="btn btn-outline-dark" title="Open the 2D studio video (razer RIGHT stream) in a new tab">View 2D Video</button>
       <button id="keyboardControlsBtn" class="btn btn-outline-secondary ml-2" data-toggle="modal" data-target="#keyboardControlsModal">⌨ Keyboard Controls</button>
+      <span id="syncGroup" class="sync-group">
+        <span class="sync-group-label">Sync van mp4:</span>
+        <button id="syncTier0Btn" class="btn btn-sm btn-outline-primary sync-tier-btn" data-tier="0" disabled>Nederlands</button>
+        <button id="syncTier1Btn" class="btn btn-sm btn-outline-warning sync-tier-btn" data-tier="1" disabled>Gebaar-voor-Gebaar</button>
+        <button id="syncTier2Btn" class="btn btn-sm btn-outline-success sync-tier-btn" data-tier="2" disabled>Signbank ID glossen</button>
+        <button id="saveSyncBtn" class="btn btn-sm btn-success" disabled>Save Sync</button>
+        <button id="revertSyncBtn" class="btn btn-sm btn-outline-danger" disabled>Revert Sync</button>
+        <span id="syncStatus"></span>
+      </span>
       <span class="ml-2">Click a gloss to select; drag handle to move; edges to resize; double-click to edit.</span>
     </div>
 
@@ -654,6 +679,24 @@
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <!-- Staged-sync guard: shown when leaving with an unsaved sync -->
+    <div class="modal fade" id="syncPendingModal" tabindex="-1" role="dialog" aria-hidden="true">
+      <div class="modal-dialog" role="document">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">Niet-opgeslagen sync</h5>
+          </div>
+          <div class="modal-body">
+            <p class="mb-0">Je hebt een niet-opgeslagen sync. Wat wil je doen?</p>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-success" id="syncPendingSaveBtn">Sync opslaan</button>
+            <button type="button" class="btn btn-outline-danger" id="syncPendingDiscardBtn">Sync verwerpen</button>
+            <button type="button" class="btn btn-secondary" data-dismiss="modal">Op deze pagina blijven</button>
           </div>
         </div>
       </div>
@@ -767,13 +810,37 @@
     let trackedHand = null;         // "left" | "right" | null - hand the camera follows
 
     // Base character URL - CC (Character Creator) avatar, same one the babyloncc/dist viewer uses.
-    const BASE_CHARACTER_URL = "/zin/PalmerPolo1024uastc.glb";
+    const BASE_CHARACTER_URL = "/animMIDI/babyloncc/dist/PalmerPolo1024uastc.glb";
     // CC helper meshes that should never render, and the metre→centimetre position scale
     // for animations. Mirrors the proven CC retargeting pipeline in babyloncc/dist/index.html.
     const EXCLUDED = ["cc_base_eyeocclusion","cc_base_tear_ducts","cc_base_tearline",
       "chin_curtain_sparse","male_bushy","mustache_horseshoe","stubble_neck",
       "cc_base_eye_primitive1","cc_base_eye_primitive3"];
-    const POS_SCALE = 100;
+    // Position unit scale. The legacy fbx2gltf pipeline exports bone positions in
+    // METRES against a centimetre CC skeleton, so its keys need x100. The
+    // FBXtoGLBCompression pipeline (Blender + fix_anim_skeleton) already emits
+    // CENTIMETRES with a 0.01 scene-root scale, so its keys must NOT be rescaled.
+    // detectPosScale() picks the right factor per animation; ?posScale= overrides.
+    let POS_SCALE = 100;
+    const POS_SCALE_METRES = 100;   // legacy fbx2gltf GLBs
+    const POS_SCALE_CM = 1;         // FBXtoGLBCompression GLBs
+    // A human skeleton in metres never exceeds a few units of translation; in
+    // centimetres it is in the tens-to-hundreds. 10 sits safely between them.
+    const CM_DETECT_THRESHOLD = 10;
+
+    // The avatar's "root" bone is not animation data - it is a fixed coordinate
+    // space correction (-90 deg X) that maps the CC bone space (Z-up) into the
+    // scene (Y-up). Nothing in a mocap clip should ever overwrite it.
+    //
+    // This matters for FBXtoGLBCompression GLBs specifically: they contain TWO
+    // nodes named "root" - the scene root (identity rotation, 0.01 scale) and
+    // the corrective joint that fix_anim_skeleton.mjs inserts. Retargeting
+    // resolves by name, so the scene root's identity rotation lands on the
+    // avatar's corrective bone, cancels the -90 deg X, and tips the whole
+    // character out of the camera's framing (it looks like the avatar vanished).
+    // Legacy fbx2gltf GLBs are unaffected: their scene root is "RootNode" and
+    // they carry no channels on "root" at all, so skipping it is a no-op there.
+    const ROOT_BONE_NAMES = new Set(['root']);
 
     // ============================================
     // BABYLONCC STUDIO-RENDER CONFIG
@@ -879,7 +946,7 @@
       if (filename) {
         returnUrl += `?edited=${filename}`;
       }
-      window.location.href = returnUrl;
+      guardStagedSync(function () { window.location.href = returnUrl; });
     });
 
     // ============================================
@@ -1396,6 +1463,7 @@
       let boneMatches = 0;
       let morphMatches = 0;
       let noMatches = 0;
+      let rootSkipped = 0;
 
       console.log("=== Starting Retarget ===");
       console.log("Skeleton:", skeleton ? "loaded" : "NOT LOADED");
@@ -1450,6 +1518,11 @@
 
           if (boneIdx !== -1) {
             const targetBone = skeleton.bones[boneIdx];
+            // Never let a clip drive the coordinate-space correction bone.
+            if (targetBone && ROOT_BONE_NAMES.has((targetBone.name || '').toLowerCase())) {
+              rootSkipped++;
+              return null;
+            }
             if (targetBone && targetBone._linkedTransformNode) {
               boneMatches++;
               return targetBone._linkedTransformNode;
@@ -1502,7 +1575,7 @@
         clonedAnimGroup.addTargetedAnimation(anim, newTarget);
       });
 
-      console.log(`Retarget complete: ${boneMatches} bone matches, ${morphMatches} morph matches, ${noMatches} no matches, ${clonedAnimGroup.targetedAnimations.length} added`);
+      console.log(`Retarget complete: ${boneMatches} bone matches, ${morphMatches} morph matches, ${noMatches} no matches, ${rootSkipped} root channels skipped, ${clonedAnimGroup.targetedAnimations.length} added`);
 
       clonedAnimGroup.name = cloneName;
       return clonedAnimGroup;
@@ -1625,6 +1698,146 @@
     }
 
     // ============================================
+    // ============================================
+    // FBXtoGLBCompression PIPELINE SUPPORT
+    // ============================================
+    // The new pipeline (github.com/J-Andersen-UvA/FBXtoGLBCompression) differs
+    // from the legacy fbx2gltf output in two ways that matter here:
+    //   1. Bone positions are in centimetres, not metres (see POS_SCALE above).
+    //   2. Facial animation is NOT in the GLB. convert_animation.py exports with
+    //      export_morph=False, and the shape keys live in a sidecar
+    //      <name>_shapekeys.json produced by fbx_to_shapekeys.py.
+    // Everything below bridges those two differences.
+
+    // Inspect the source animation's translation keys to decide whether the GLB
+    // is authored in metres or centimetres.
+    function detectPosScale(animGroup) {
+      const override = new URLSearchParams(window.location.search).get('posScale');
+      if (override !== null && override !== '') {
+        const forced = parseFloat(override);
+        if (!isNaN(forced)) {
+          console.log(`[units] POS_SCALE forced to ${forced} via ?posScale=`);
+          return forced;
+        }
+      }
+
+      let maxAbs = 0;
+      for (const ta of animGroup.targetedAnimations) {
+        if (!ta.animation || ta.animation.targetProperty !== 'position') continue;
+        for (const k of ta.animation.getKeys()) {
+          const v = k.value;
+          if (!v || v.x === undefined) continue;
+          maxAbs = Math.max(maxAbs, Math.abs(v.x), Math.abs(v.y), Math.abs(v.z));
+        }
+      }
+
+      const cm = maxAbs > CM_DETECT_THRESHOLD;
+      console.log(`[units] max |translation| key = ${maxAbs.toFixed(3)} -> ` +
+                  `${cm ? 'CENTIMETRES (FBXtoGLBCompression)' : 'METRES (legacy fbx2gltf)'}`);
+      return cm ? POS_SCALE_CM : POS_SCALE_METRES;
+    }
+
+    // Sidecar path for a given animation GLB: foo_anim.glb -> foo_shapekeys.json
+    function shapekeysUrlFor(glbPath) {
+      return glbPath.replace(/_anim\.glb$/i, '_shapekeys.json')
+                    .replace(/\.glb$/i, '_shapekeys.json');
+    }
+
+    // Fetch the sidecar. Returns null when there isn't one (legacy GLBs), which
+    // is not an error - those carry their morph animation inside the GLB.
+    async function fetchShapekeys(glbPath) {
+      const url = shapekeysUrlFor(glbPath);
+      if (url === glbPath) return null;
+      try {
+        const res = await fetch(url);
+        if (!res.ok) {
+          console.log(`[shapekeys] no sidecar at ${url} (${res.status}) - using in-GLB morphs if present`);
+          return null;
+        }
+        const data = await res.json();
+        if (!data || !Array.isArray(data.shapeKeys) || !Array.isArray(data.animation)) {
+          console.warn('[shapekeys] sidecar has unexpected shape, ignoring:', url);
+          return null;
+        }
+        console.log(`[shapekeys] loaded ${url}: ${data.shapeKeys.length} targets, ` +
+                    `${data.animation.length} frames @ ${data.fps} fps`);
+        return data;
+      } catch (err) {
+        console.warn('[shapekeys] fetch failed:', url, err);
+        return null;
+      }
+    }
+
+    // Build morph-target animations from the sidecar and append them to the
+    // retargeted group, so the existing timeline/scrub/play controls drive them.
+    //
+    // Frames are mapped proportionally onto the retargeted group's own frame
+    // range rather than assumed to share its numbering: the GLB and the JSON
+    // come from the same FBX and cover the same clip, but Babylon's glTF loader
+    // picks its own frame numbering, so proportional mapping is the reliable
+    // way to line them up.
+    function applyShapekeysToGroup(animGroup, data, from, to) {
+      if (!animGroup || !data || !morphTargetManagers.length) return 0;
+
+      const frames = data.animation;
+      if (frames.length < 2) {
+        console.warn('[shapekeys] fewer than 2 frames, skipping');
+        return 0;
+      }
+
+      if (!(to > from)) {
+        console.warn(`[shapekeys] group has no frame range (${from}..${to}), skipping`);
+        return 0;
+      }
+      const span = to - from;
+      const lastIdx = frames.length - 1;
+
+      // name -> [{frame, value}], filling absent (sparse) weights with 0
+      const curves = new Map();
+      for (const name of data.shapeKeys) curves.set(name, []);
+      frames.forEach((f, i) => {
+        const frame = from + (i / lastIdx) * span;
+        const weights = f.weights || {};
+        for (const name of data.shapeKeys) {
+          curves.get(name).push({ frame, value: weights[name] || 0 });
+        }
+      });
+
+      // Drop curves that never leave zero - no point animating them.
+      let added = 0, skipped = 0, unmatched = 0;
+      const fps = data.fps || 24;
+
+      for (const [name, keys] of curves) {
+        if (!keys.some(k => k.value !== 0)) { skipped++; continue; }
+
+        // Apply to every mesh that owns this morph target (body, eyes, teeth,
+        // tongue, brows...) so the whole face moves together.
+        let matchedAny = false;
+        for (const mtm of morphTargetManagers) {
+          const idx = getMorphTargetIndex(mtm, name);
+          if (idx === -1) continue;
+          matchedAny = true;
+
+          const anim = new BABYLON.Animation(
+            `shapekey_${name}_${added}`,
+            'influence',
+            fps,
+            BABYLON.Animation.ANIMATIONTYPE_FLOAT,
+            BABYLON.Animation.ANIMATIONLOOPMODE_CONSTANT
+          );
+          anim.setKeys(keys.map(k => ({ frame: k.frame, value: k.value })));
+          animGroup.addTargetedAnimation(anim, mtm.getTarget(idx));
+          added++;
+        }
+        if (!matchedAny) unmatched++;
+      }
+
+      console.log(`[shapekeys] added ${added} morph animations ` +
+                  `(${skipped} all-zero skipped, ${unmatched} not on avatar), ` +
+                  `mapped onto frames ${from.toFixed(1)}..${to.toFixed(1)}`);
+      return added;
+    }
+
     // ANIMATION GLB LOADING (with retargeting)
     // ============================================
     async function loadAnimationGLB(glbPath) {
@@ -1686,6 +1899,10 @@
         const morphAnims = sourceAnimation.targetedAnimations.filter(ta =>
           ta.animation?.targetProperty === 'influence');
         console.log(`Animation breakdown: ${boneAnims.length} bone anims, ${morphAnims.length} morph anims`);
+
+        // Pick the position unit scale from this GLB before retargeting, since
+        // retargetAnimWithBlendshapes() applies POS_SCALE to the position keys.
+        POS_SCALE = detectPosScale(sourceAnimation);
 
         // Retarget animation to base character FIRST
         const animName = glbPath.split('/').pop().replace('.glb', '').replace('.gltf', '');
@@ -1762,6 +1979,15 @@
             animationFromFrame = 0;
           }
           console.log("Extracted frame range:", animationFromFrame, "to", animationToFrame);
+        }
+
+        // Facial animation from the FBXtoGLBCompression sidecar JSON, if this
+        // GLB has one. Done here (not right after retargeting) because it needs
+        // the settled frame range to map the JSON frames onto.
+        const shapekeyData = await fetchShapekeys(glbPath);
+        if (shapekeyData) {
+          applyShapekeysToGroup(currentAnimationGroup, shapekeyData,
+                                animationFromFrame, animationToFrame);
         }
 
         // Stop auto-play, we control manually
@@ -3181,14 +3407,18 @@
         const data = await response.json();
         if (data.success && data.subtitles) {
           subtitles = transformSubtitles(data.subtitles);
+          subtitlesLoaded = true;
+          updateSyncStatusUI();
           renderAll();
           // Verify SRT file integrity on load
           verifySubtitlesOnDisk();
         } else {
           console.error('Failed to load subtitles', data.error);
+          showToast('Annotatie kon niet worden geladen — synchroniseren is niet beschikbaar', 'error', 5000);
         }
       } catch (err) {
         console.error('Error fetching subtitles', err);
+        showToast('Annotatie kon niet worden geladen — synchroniseren is niet beschikbaar', 'error', 5000);
       }
     }
     fetchSubtitlesFromServer();
@@ -3242,7 +3472,14 @@
     let isSavingBeforeUnload = false;
 
     // Last-resort synchronous save when the tab/window is closing
-    window.addEventListener('beforeunload', function () {
+    window.addEventListener('beforeunload', function (e) {
+      // A staged sync must not be beaconed to disk - that would commit something
+      // the user never approved. Fall back to the browser's own leave prompt.
+      if (isSyncStaged()) {
+        e.preventDefault();
+        e.returnValue = '';
+        return '';
+      }
       if (hasUnsavedChanges && !isSavingBeforeUnload) {
         const fileParam = getSaveFilename();
         if (fileParam) {
@@ -3255,12 +3492,15 @@
     // Intercept in-page navigation links to save before leaving
     document.addEventListener('click', function (e) {
       const link = e.target.closest('a[href]');
-      if (!link || !hasUnsavedChanges) return;
+      if (!link) return;
+      if (!hasUnsavedChanges && !isSyncStaged()) return;
       const href = link.getAttribute('href');
       if (!href || href.startsWith('#') || href.startsWith('javascript:')) return;
       e.preventDefault();
-      isSavingBeforeUnload = true;
-      saveAndNavigate(href);
+      guardStagedSync(function () {
+        isSavingBeforeUnload = true;
+        saveAndNavigate(href);
+      });
     });
 
     async function saveAndNavigate(destination) {
@@ -3281,6 +3521,11 @@
 
     // Save on browser back/forward as well
     window.addEventListener('popstate', function () {
+      if (isSyncStaged()) {
+        history.pushState(null, '', document.location.href);   // cancel the navigation
+        guardStagedSync(function () { saveAndNavigate(document.location.href); });
+        return;
+      }
       if (hasUnsavedChanges) {
         saveAndNavigate(document.location.href);
       }
@@ -3293,7 +3538,228 @@
       }
     });
 
+    // ============================================
+    // TIER SYNC FROM SOURCE MP4
+    // ============================================
+    // tier index -> deep copy of that tier's subs as they were before its first sync
+    let syncBaseline = {};
+    let manualEditsWhileStaged = false;
+    let syncFetchInFlight = false;
+    // Guards against staging a sync before the initial subtitles have loaded
+    // (captureTierBaseline would snapshot an empty array, and the in-flight
+    // load would then overwrite subtitles wholesale, staging forever with an
+    // empty baseline).
+    let subtitlesLoaded = false;
+    // Declared here (rather than down by Auto-Segment, where it's used) because
+    // updateSyncStatusUI() below reads it on its very first synchronous call,
+    // which runs before the Auto-Segment section of the script executes -
+    // a `let` declared later would still be in its temporal dead zone then.
+    let autoSegSnapshot = null;       // deep copy of subtitles before the first Auto-Segment
+
+    function isSyncStaged() { return Object.keys(syncBaseline).length > 0; }
+
+    function getSyncSourceBase() { return SyncTiers.getSyncSourceBase(getSaveFilename()); }
+
+    function updateSyncStatusUI() {
+      const source = getSyncSourceBase();
+      const staged = Object.keys(syncBaseline).map(Number);
+      const group = document.getElementById('syncGroup');
+
+      group.title = source
+        ? 'Haal een tier op uit de annotatie van ' + source
+        : 'Geen bron-mp4 gevonden voor dit bestand';
+
+      [0, 1, 2].forEach(function (t) {
+        const btn = document.getElementById('syncTier' + t + 'Btn');
+        btn.disabled = !source || syncFetchInFlight || !subtitlesLoaded;
+        btn.classList.toggle('staged', staged.indexOf(t) !== -1);
+      });
+
+      document.getElementById('saveSyncBtn').disabled = !staged.length;
+      document.getElementById('revertSyncBtn').disabled = !staged.length;
+
+      // Auto-Segment and tier-sync are mutually exclusive: both stage changes
+      // to `subtitles` independently, so running one while the other's staged
+      // state is unresolved corrupts whichever gets reverted second.
+      const autoSegTitle = 'Niet beschikbaar terwijl een sync openstaat — sla of verwerp eerst de sync';
+      [document.getElementById('autoSegBtn'), document.getElementById('autoSeg2DBtn')].forEach(function (btn) {
+        if (btn.dataset.origTitle === undefined) btn.dataset.origTitle = btn.title;
+        // OR with the existing value so we don't re-enable a button that's
+        // disabled for its own reason (e.g. mid-segmentation).
+        btn.disabled = btn.disabled || isSyncStaged();
+        btn.title = isSyncStaged() ? autoSegTitle : btn.dataset.origTitle;
+      });
+      const revertAutoSegBtn = document.getElementById('revertAutoSegBtn');
+      if (revertAutoSegBtn.dataset.origTitle === undefined) revertAutoSegBtn.dataset.origTitle = revertAutoSegBtn.title;
+      revertAutoSegBtn.disabled = isSyncStaged() || !autoSegSnapshot;
+      revertAutoSegBtn.title = isSyncStaged() ? autoSegTitle : revertAutoSegBtn.dataset.origTitle;
+
+      const status = document.getElementById('syncStatus');
+      status.textContent = staged.length
+        ? '● ' + staged.length + (staged.length === 1 ? ' tier' : ' tiers') + ' gesynct — niet opgeslagen'
+        : '';
+    }
+
+    updateSyncStatusUI();
+
+    async function syncTierFromSource(tier) {
+      const source = getSyncSourceBase();
+      if (!source || syncFetchInFlight || !subtitlesLoaded) return;
+      const tierName = SyncTiers.TIER_NAMES[tier];
+
+      // Close the re-entry guard BEFORE the first await. The pre-sync flush
+      // suspends this function while the buttons are still enabled, so setting
+      // the flag after it would let a double-click start a second concurrent
+      // sync: two uploads, two fetches, and a flag that one flow clears while
+      // the other is still running.
+      syncFetchInFlight = true;
+      updateSyncStatusUI();
+      try {
+        // Flush any debounced edit first, so the baseline provably equals disk.
+        // Skipped when already staged: autosave is suppressed and disk has not moved.
+        if (!isSyncStaged()) {
+          clearTimeout(autosaveTimer);
+          if (hasUnsavedChanges) {
+            try {
+              await performUpload();
+            } catch (err) {
+              showToast('Kon huidige wijzigingen niet opslaan — sync afgebroken', 'error', 5000);
+              return;
+            }
+          }
+        }
+
+        const response = await fetch('getZinnen.php?action=fetchSubtitles&filename=' + encodeURIComponent(source));
+        const data = await response.json();
+        if (!data.success || !data.subtitles) {
+          showToast('Geen mp4-annotatie gevonden voor ' + source, 'error', 5000);
+          return;
+        }
+
+        const incoming = transformSubtitles(data.subtitles).filter(function (s) { return s.tier === tier; });
+        if (!incoming.length) {
+          showToast(tierName + ' is leeg in de mp4-annotatie — niets gesynct', 'error', 5000);
+          return;
+        }
+
+        // Capture the baseline only on this tier's FIRST sync, so syncing twice
+        // does not overwrite it with already-synced data.
+        if (!(tier in syncBaseline)) {
+          syncBaseline[tier] = SyncTiers.captureTierBaseline(subtitles, tier);
+        }
+        subtitles = SyncTiers.spliceTier(subtitles, tier, incoming);
+        // A snapshot taken before this sync is no longer a valid restore point.
+        autoSegSnapshot = null;
+        renderAll();
+        showToast(tierName + ' gesynct uit ' + source + ' (' + incoming.length + ' items) — nog niet opgeslagen', 'success', 4000);
+      } catch (err) {
+        console.error('Sync error', err);
+        showToast('Netwerkfout bij synchroniseren — niets gewijzigd', 'error', 5000);
+      } finally {
+        syncFetchInFlight = false;
+        updateSyncStatusUI();
+      }
+    }
+
+    [0, 1, 2].forEach(function (t) {
+      document.getElementById('syncTier' + t + 'Btn')
+        .addEventListener('click', function () { syncTierFromSource(t); });
+    });
+
+    // Commits the staged sync AND any hand edits made while it was staged -
+    // performUpload writes the whole subtitles array, and both were held back together.
+    async function saveSync() {
+      if (!isSyncStaged()) return;
+      const btn = document.getElementById('saveSyncBtn');
+      btn.disabled = true;
+      try {
+        hasUnsavedChanges = true;      // performUpload clears it on success
+        await performUpload();
+        // Only strip cloneId/masterId (and clear the baseline) on success. If
+        // the upload fails, the sync stays staged for retry, and a subsequent
+        // Revert Sync must still find the links intact to restore byte-identical
+        // state - stripping before the upload could otherwise leave a permanently
+        // half-linked pair even after a discard. The server ignores these fields
+        // either way, so stripping here vs. before does not change what was sent.
+        SyncTiers.stripDanglingLinks(subtitles);
+        syncBaseline = {};
+        manualEditsWhileStaged = false;
+        showToast('Sync opgeslagen', 'success', 2500);
+      } catch (err) {
+        showToast('Opslaan van sync mislukt — sync blijft staan', 'error', 5000);
+      } finally {
+        updateSyncStatusUI();
+      }
+    }
+
+    function revertSync() {
+      if (!isSyncStaged()) return;
+      subtitles = SyncTiers.revertTiers(subtitles, syncBaseline);
+      const hadManualEdits = manualEditsWhileStaged;
+      // Clear the staged state BEFORE calling uploadSubtitles, or its
+      // early return swallows the very save meant to persist the hand edits.
+      syncBaseline = {};
+      manualEditsWhileStaged = false;
+      renderAll();
+      if (hadManualEdits) uploadSubtitles();
+      updateSyncStatusUI();
+      showToast('Sync verworpen', 'success', 2500);
+    }
+
+    document.getElementById('saveSyncBtn').addEventListener('click', saveSync);
+    document.getElementById('revertSyncBtn').addEventListener('click', revertSync);
+
+    // Runs proceed() straight away when no sync is staged. Otherwise asks first -
+    // a staged sync must never be committed or discarded without the user saying so.
+    let syncPendingProceed = null;
+
+    function guardStagedSync(proceed) {
+      if (!isSyncStaged()) { proceed(); return; }
+      // A pending callback means the modal is already open asking the user
+      // this same question - don't silently replace it with a second one.
+      if (syncPendingProceed) return;
+      syncPendingProceed = proceed;
+      $('#syncPendingModal').modal({ backdrop: 'static', keyboard: false });
+    }
+
+    document.getElementById('syncPendingSaveBtn').addEventListener('click', async function () {
+      const modalBtn = this;
+      modalBtn.disabled = true;
+      try {
+        await saveSync();
+        if (isSyncStaged()) return;        // save failed - stay put, toast already shown
+        // Capture BEFORE hiding: the hidden.bs.modal handler clears it.
+        const proceed = syncPendingProceed; syncPendingProceed = null;
+        $('#syncPendingModal').modal('hide');
+        if (proceed) proceed();
+      } finally {
+        modalBtn.disabled = false;
+      }
+    });
+
+    document.getElementById('syncPendingDiscardBtn').addEventListener('click', function () {
+      revertSync();
+      const proceed = syncPendingProceed; syncPendingProceed = null;
+      $('#syncPendingModal').modal('hide');
+      if (proceed) proceed();
+    });
+
+    // jQuery loads at :3870, AFTER this inline script - so this one parse-time
+    // jQuery call must wait for load. The $ calls above are inside handlers that
+    // only run later, and are therefore safe as written.
+    window.addEventListener('load', function () {
+      $('#syncPendingModal').on('hidden.bs.modal', function () { syncPendingProceed = null; });
+    });
+
     function uploadSubtitles() {
+      // While a sync is staged, nothing is written to disk - Save Sync or Revert
+      // Sync decides. Hand edits made in the meantime are remembered and saved
+      // once the staged sync is resolved.
+      if (isSyncStaged()) {
+        manualEditsWhileStaged = true;
+        updateSyncStatusUI();
+        return;
+      }
       hasUnsavedChanges = true;
       clearTimeout(autosaveTimer);
       autosaveTimer = setTimeout(() => { performUpload().catch(() => {}); }, 1000);
@@ -3692,7 +4158,6 @@
     const SEG_BASE = (location.hostname === 'localhost' || location.hostname === '127.0.0.1')
       ? 'http://localhost:8001' : 'https://signcollect.nl/sign-segmenter';
     const SIGNBANK_TIER = 2;          // "Signbank ID glossen"
-    let autoSegSnapshot = null;       // deep copy of subtitles before the first Auto-Segment
 
     // Basename of the loaded animation, from ?glb= (or ?filename=).
     function animBasename() {
@@ -3782,7 +4247,7 @@
 
         renderAll();
         uploadSubtitles();
-        revertBtn.disabled = false;
+        revertBtn.disabled = isSyncStaged() || !autoSegSnapshot;
 
         let msg = `Re-timed ${n} Signbank sign(s)`;
         if (added) msg += `, added ${added} new segment(s)`;
@@ -3792,7 +4257,10 @@
         console.error('Auto-Segment failed', err);
         showToast('Auto-Segment failed: ' + err.message, 'error', 5000);
       } finally {
-        btn.disabled = false; otherBtn.disabled = false; btn.textContent = origLabel;
+        const stagedNow = isSyncStaged();
+        btn.disabled = stagedNow;
+        otherBtn.disabled = stagedNow;
+        btn.textContent = origLabel;
       }
     }
 

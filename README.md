@@ -1,83 +1,49 @@
 # annotation-editors — production sign-language annotation editors
 
-Self-contained extracts of the two **production** annotation editors launched from
-`zinnen.html`, each in its own runnable subfolder. Companion to `zin-lite` (the sentence
-browser). Extracted from `/web/zin` without disturbing the originals.
+**Source of truth** for the two annotation editors launched from `zinnen.html`.
+They used to live in `signlab_zin` (and were forked again into `signlab_hh`);
+those copies drifted apart, so the editors now live here only and the other
+repos link to this deployment.
 
-| folder       | tool                          | launched from `zinnen.html` by |
-|--------------|-------------------------------|--------------------------------|
-| `subBeta8/`  | AI-assisted subtitle editor   | `editEAF-AI` button (the live `signcollect.nl/zin/subBeta8.html`) |
-| `3DAnn2/`    | 3D motion-capture annotator   | `editMocap` button (line 1461) |
+| folder      | tool                        | launched from                          |
+|-------------|-----------------------------|----------------------------------------|
+| `subBeta8/` | AI-assisted subtitle editor | `editEAF` / `editEAF-AI` in `zinnen.html`, and `overview_hh.html` |
+| `3DAnn3/`   | 3D motion-capture annotator | `editMocap` in `zinnen.html`           |
 
-Each subfolder is its own web docroot with a 2-level layout mirroring the original, so no
-include/asset paths had to be edited. Serve a subfolder's root as docroot and open
-`/zin/<tool>.html`.
+Each subfolder is its own web docroot with a 2-level layout mirroring the
+original `/web` tree, so no include or asset paths had to be edited. Serve a
+subfolder's root as docroot and open `/zin/<tool>.html`.
 
-## subBeta8/  (subtitle editor)
+## Retired
 
-```
-subBeta8/                      <- docroot
-├── mysql_config.php           -> symlink to /web/mysql_config.php (shared creds)
-├── userProtect.js  login.html  login_sc.php  users_api.php     # auth guard + chain
-└── zin/
-    ├── subBeta8.html          # the editor
-    ├── getZinnen.php          # main backend (6 calls)  -> ../mysql_config.php
-    ├── getGlossVideo.php      # gloss video lookup (2 calls)
-    ├── getHandshapes.php      # handshapes (1 call)     -> HandshapeClient.php
-    ├── HandshapeClient.php    # WebSocket client (ws://localhost:9000 at runtime)
-    ├── syncEafToDatabase.php  # required by getZinnen.php -> api/mysql_config.php
-    ├── SignSegmentationClient.php   # required by getZinnen.php
-    ├── api/mysql_config.php
-    └── eaf/zin/  cache/       # (empty) runtime dirs
-```
+- **`3DAnn2`** — superseded by `3DAnn3`, which reads the FBXtoGLBCompression
+  output. The two were never interchangeable: 3DAnn2 hardcoded `POS_SCALE=100`
+  for legacy metre-based GLBs. Removed 2026-09-07; recoverable from git history.
+- **`subBeta` … `subBeta7`** — superseded iterations, removed from `signlab_zin`.
 
-**Remote services (stay remote, not bundled):** `signcollect.nl/sign-segmenter`,
-`/sign-spotter`, `/ISS_Server/ws` (websocket), and media under
-`signcollect.nl/gebarenoverleg_media/studioFilesMini/`. subBeta8 has **no** large local assets.
+## Runtime dependencies
 
-## 3DAnn2/  (3D mocap annotator)
+Neither editor bundles large assets. Both need these to be served by other
+deployments on the same origin:
 
-```
-3DAnn2/                        <- docroot
-├── mysql_config.php           -> symlink to /web/mysql_config.php
-├── animMIDI/babyloncc/dist/
-│   ├── Backdrop.glb           # backdrop mesh   (/animMIDI/babyloncc/dist/Backdrop.glb)
-│   └── environment.envbin     # IBL environment (.env served as .envbin; Apache blocks *.env)
-└── zin/
-    ├── 3DAnn2.html            # the editor (Babylon.js from CDN)
-    ├── PalmerPolo1024uastc.glb # 34MB base avatar  (/zin/PalmerPolo1024uastc.glb)  ** see note **
-    ├── getZinnen.php          # main backend (6 calls)
-    ├── getRazerVideo.php      # razer .mkv lookup (2 calls; globs /web/gebarenoverleg_media/razerFiles/)
-    ├── syncEafToDatabase.php  SignSegmentationClient.php   # required by getZinnen.php
-    ├── api/mysql_config.php
-    ├── record3D/out/          # (empty) runtime render output: record3D/out/<base>.mp4
-    └── eaf/zin/  cache/       # (empty) runtime dirs
-```
+| path | provided by |
+|---|---|
+| `/animMIDI/babyloncc/dist/environment.envbin` | `signlab_sC-Animation-PP` at `/web/animMIDI` |
+| `/animMIDI/babyloncc/dist/PalmerPolo1024uastc.glb` | same — 34 MB base avatar |
+| `/glosses_transformed.json` | rebuilt by the Signbank connector script |
+| `/userProtect.js` | the deploy's shared auth guard (subBeta8 only) |
+| `mysql_config.php` | one level above `zin/`; symlink to `/web/mysql_config.php` |
 
-3DAnn2 has **no auth guard** (no `userProtect.js`) — matching the original. Mocap animation
-GLBs are loaded dynamically at runtime from server paths (e.g.
-`/gebarenoverleg_media/fbx/post_processed/…`), so they are not bundled.
+3DAnn3 previously loaded the avatar from `/zin/PalmerPolo1024uastc.glb`, a
+byte-identical 34 MB copy of the `animMIDI` one. It now uses the `animMIDI`
+copy so the file exists once.
 
-## Not included (deliberately)
+Remote services stay remote and are not bundled: `/sign-segmenter`,
+`/sign-spotter`, `/ISS_Server/ws`, and media under
+`/gebarenoverleg_media/studioFilesMini/`.
 
-- **Other versions**: `subBeta`–`subBeta7`, `3DAnn`/`3DAnn1`, and all `*.backup*` — only the
-  production versions above are extracted.
-- **Runtime data**: existing EAF/SRT files, recorded mp4s, mocap GLBs, videos — the empty
-  `eaf/zin/`, `cache/`, `record3D/out/` dirs are placeholders; live data comes from the DB
-  and the `signcollect.nl` media server.
+3DAnn3 has no auth guard (no `userProtect.js`), matching the original.
 
-## ⚠️ The 34 MB avatar model & git
+## Deployment
 
-`3DAnn2/zin/PalmerPolo1024uastc.glb` (34 MB) is **present on disk** (the folder is fully
-runnable) but is **git-ignored** to keep the repo lean — a 34 MB binary bloats git history.
-To version it too, remove its line from `.gitignore` (or set up git-lfs) and re-add.
-
-## Running
-
-1. Point a PHP web server's docroot at `subBeta8/` or `3DAnn2/` (e.g. `php -S 0.0.0.0:8000`
-   from inside it, or Apache/nginx).
-2. Ensure the MySQL DB in `/web/mysql_config.php` (`admin_gebarenoverleg@localhost`) is reachable.
-3. Open `/zin/subBeta8.html` or `/zin/3DAnn2.html`.
-
-> `mysql_config.php` is a symlink to the shared `/web/mysql_config.php` (real credentials, not
-> duplicated). Keep this project private.
+Deployed by `interface_deploy/scripts/install.sh` in `signlab_signcollect-stack`.
