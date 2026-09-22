@@ -2018,7 +2018,7 @@
         const filenameMatch = animName.match(/M\d{8}_\d{4}/);
         if (filenameMatch) {
           try {
-            const zinResponse = await fetch(`getZinnen.php?action=fetchZinArrayByFilename&filename=${encodeURIComponent(filenameMatch[0] + '.wav')}`);
+            const zinResponse = await fetch(`/zin/getZinnen.php?action=fetchZinArrayByFilename&filename=${encodeURIComponent(filenameMatch[0] + '.wav')}`);
             const zinData = await zinResponse.json();
             if (zinData.success && zinData.zinArray) {
               currentZinArray = zinData.zinArray;
@@ -3403,7 +3403,7 @@
         }
       }
       try {
-        const response = await fetch(`getZinnen.php?action=fetchSubtitles&filename=${encodeURIComponent(fileParam)}`);
+        const response = await fetch(`/zin/getZinnen.php?action=fetchSubtitles&filename=${encodeURIComponent(fileParam)}`);
         const data = await response.json();
         if (data.success && data.subtitles) {
           subtitles = transformSubtitles(data.subtitles);
@@ -3456,7 +3456,7 @@
       const fileParam = getSaveFilename();
       if (!fileParam) return;
       try {
-        const response = await fetch(`getZinnen.php?action=verifySubtitles&filename=${encodeURIComponent(fileParam)}`);
+        const response = await fetch(`/zin/getZinnen.php?action=verifySubtitles&filename=${encodeURIComponent(fileParam)}`);
         const data = await response.json();
         if (data.success && data.verified === false && data.mismatches) {
           console.warn('SRT mismatch detected:', data.mismatches);
@@ -3484,7 +3484,7 @@
         const fileParam = getSaveFilename();
         if (fileParam) {
           const blob = new Blob([JSON.stringify({ subtitles: subtitles })], { type: 'application/json' });
-          navigator.sendBeacon('getZinnen.php?action=saveSubtitlesAndEAFFiles&filename=' + encodeURIComponent(fileParam), blob);
+          navigator.sendBeacon('/zin/getZinnen.php?action=saveSubtitlesAndEAFFiles&filename=' + encodeURIComponent(fileParam), blob);
         }
       }
     });
@@ -3629,7 +3629,7 @@
           }
         }
 
-        const response = await fetch('getZinnen.php?action=fetchSubtitles&filename=' + encodeURIComponent(source));
+        const response = await fetch('/zin/getZinnen.php?action=fetchSubtitles&filename=' + encodeURIComponent(source));
         const data = await response.json();
         if (!data.success || !data.subtitles) {
           showToast('Geen mp4-annotatie gevonden voor ' + source, 'error', 5000);
@@ -3773,7 +3773,7 @@
       }
       try {
         console.log("Performing autosave:", subtitles);
-        const response = await fetch('getZinnen.php?action=saveSubtitlesAndEAFFiles&filename='+sanitizedFileParam, {
+        const response = await fetch('/zin/getZinnen.php?action=saveSubtitlesAndEAFFiles&filename='+sanitizedFileParam, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ subtitles: subtitles })
@@ -4172,7 +4172,7 @@
     function autoSegVideoUrl() {
       const base = animBasename();
       if (!base) return null;
-      return 'record3D/out/' + encodeURIComponent(base) + '.mp4';
+      return '/zin/record3D/out/' + encodeURIComponent(base) + '.mp4';
     }
 
     // The 2D studio stream of the same capture lives in razerFiles with an
@@ -4180,7 +4180,7 @@
     async function razerVideoUrl() {
       const base = animBasename();
       if (!base) return null;
-      const r = await fetch('getRazerVideo.php?base=' + encodeURIComponent(base) + '&view=RIGHT');
+      const r = await fetch('/zin/getRazerVideo.php?base=' + encodeURIComponent(base) + '&view=RIGHT');
       if (!r.ok) return null;
       const data = await r.json();
       return data.success ? data.url : null;
@@ -4295,7 +4295,7 @@
       const formData = new FormData();
       formData.append('rowId', currentSentenceRowId);
       formData.append(paramName, value);
-      fetch('getZinnen.php?action=' + action, { method: 'POST', body: formData })
+      fetch('/zin/getZinnen.php?action=' + action, { method: 'POST', body: formData })
         .then(r => r.json())
         .then(data => { if (!data.success) console.error('MCP status save failed:', data.error); })
         .catch(err => console.error('MCP status save error:', err));
