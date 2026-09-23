@@ -1,5 +1,5 @@
 # signlab_annotation-editors
-The two sign-language annotation editors that `zinnen.html` opens. This repo is the only copy; zin and hh link here.
+The two sign-language annotation editors that `zinnen.html` opens. This repo is the only copy; [signlab_zinnen-annotation](https://github.com/Amsterdam-Humanities-Labs/signlab_zinnen-annotation) and [signlab_patient-info](https://github.com/Amsterdam-Humanities-Labs/signlab_patient-info) link here.
 
 ## What it does
 | Folder | Tool | Opened from |
