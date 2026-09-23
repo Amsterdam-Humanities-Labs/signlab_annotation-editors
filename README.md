@@ -7,7 +7,7 @@ The two sign-language annotation editors that `zinnen.html` opens. This repo is 
 | `subBeta8/` | subtitle editor with AI suggestions | `editEAF` / `editEAF-AI` in `zinnen.html`, and `overview_hh.html` |
 | `3DAnn3/` | motion-capture annotator in 3D | `editMocap` in `zinnen.html` |
 
-Both are static HTML/JS. They send every server call to [signlab_zin](https://github.com/Amsterdam-Humanities-Labs/signlab_zin) on the same origin (`/zin/getZinnen.php` and others). EAF files therefore land in `/web/zin/eaf/zin/`.
+Both are static HTML/JS. They send every server call to [signlab_zinnen-annotation](https://github.com/Amsterdam-Humanities-Labs/signlab_zinnen-annotation) on the same origin (`/zin/getZinnen.php` and others). EAF files therefore land in `/web/zin/eaf/zin/`.
 
 ## Where it runs
 Core server, `<root>/annotation-editors` (`/web` on production). URLs:
@@ -26,8 +26,8 @@ None. The repo has no PHP and no credentials.
 ## Dependencies
 | Path | Comes from |
 |---|---|
-| `/zin/getZinnen.php`, `getGlossVideo.php`, `getHandshapes.php`, `getRazerVideo.php`, `/zin/record3D/out/` | signlab_zin |
-| `/animMIDI/babyloncc/dist/` (avatar, `environment.envbin`) | [signlab_sC-Animation-PP](https://github.com/Amsterdam-Humanities-Labs/signlab_sC-Animation-PP) |
+| `/zin/getZinnen.php`, `getGlossVideo.php`, `getHandshapes.php`, `getRazerVideo.php`, `/zin/record3D/out/` | signlab_zinnen-annotation |
+| `/animMIDI/babyloncc/dist/` (avatar, `environment.envbin`) | [signlab_mocap-postprocessing](https://github.com/Amsterdam-Humanities-Labs/signlab_mocap-postprocessing) |
 | `/signbank_data/glosses_transformed.json` (falls back to `/glosses_transformed.json`) | [signlab_signCollect-v2](https://github.com/Amsterdam-Humanities-Labs/signlab_signCollect-v2) |
 | `/userProtect.js` (subBeta8 only; 3DAnn3 has no login check) | the stack's `interface_deploy/web_extra/` |
 
