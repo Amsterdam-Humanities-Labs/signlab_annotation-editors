@@ -28,7 +28,7 @@ None. The repo has no PHP and no credentials.
 |---|---|
 | `/zin/getZinnen.php`, `getGlossVideo.php`, `getHandshapes.php`, `getRazerVideo.php`, `/zin/record3D/out/` | signlab_zin |
 | `/animMIDI/babyloncc/dist/` (avatar, `environment.envbin`) | [signlab_sC-Animation-PP](https://github.com/Amsterdam-Humanities-Labs/signlab_sC-Animation-PP) |
-| `/signbank_data/glosses_transformed.json` | [signlab_signCollect-v2](https://github.com/Amsterdam-Humanities-Labs/signlab_signCollect-v2) |
+| `/signbank_data/glosses_transformed.json` (falls back to `/glosses_transformed.json`) | [signlab_signCollect-v2](https://github.com/Amsterdam-Humanities-Labs/signlab_signCollect-v2) |
 | `/userProtect.js` (subBeta8 only; 3DAnn3 has no login check) | the stack's `interface_deploy/web_extra/` |
 
-Other services: `/sign-segmenter`, `/sign-spotter`, `/ISS_Server/ws`, and media under `/gebarenoverleg_media/studioFilesMini/`.
+Other services, hardcoded to `https://signcollect.nl` (localhost when opened locally): `/sign-segmenter`, `/sign-spotter`, `/ISS_Server/ws`, and media under `/gebarenoverleg_media/studioFilesMini/`. subBeta8 also loads `/uploads/<gloss>.mp4`.
