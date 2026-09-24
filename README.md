@@ -32,3 +32,10 @@ None. The repo has no PHP and no credentials.
 | `/userProtect.js` (subBeta8 and 3DAnn3) | the stack's `interface_deploy/web_extra/` |
 
 Other services, hardcoded to `https://signcollect.nl` (localhost when opened locally): `/sign-segmenter`, `/sign-spotter`, `/ISS_Server/ws`, and media under `/gebarenoverleg_media/studioFilesMini/`. subBeta8 also loads `/uploads/<gloss>.mp4`.
+
+## License and citation
+
+Apache License 2.0, copyright University of Amsterdam: see [LICENSE](LICENSE) and
+[NOTICE](NOTICE). You may use it, also commercially, as long as you credit
+Gomer Otterspeer / University of Amsterdam as the source. To cite it, use
+[CITATION.cff](CITATION.cff) (the *Cite this repository* button on GitHub) or the DOI [10.21942/uva.33980293](https://doi.org/10.21942/uva.33980293).
