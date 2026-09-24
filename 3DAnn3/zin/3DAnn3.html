@@ -3227,7 +3227,7 @@
       } else {
         filename = '3d_annotation';
       }
-      const trackNames = ["Gebaar-voor-Gebaar", "Nederlands", "Signbank ID glossen"];
+      const trackNames = ["Nederlands", "Gebaar-voor-Gebaar", "Signbank ID glossen"];
       trackNames.forEach((trackName, tid) => {
         const subsForTrack = subtitles.filter(sub => sub.tier === tid);
         if (!subsForTrack.length) return;
